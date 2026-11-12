@@ -1,0 +1,9 @@
+{
+  "observations": 252.0,
+  "mean_period_return": -0.00010963415905234756,
+  "annualized_mean": -0.027627808081191585,
+  "annualized_volatility": 0.1766588534865756,
+  "max_drawdown": -0.17765185136397033,
+  "seed": 2025,
+  "ending_synthetic_price": 95.77412219494056
+}
