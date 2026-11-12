@@ -29,3 +29,24 @@ def test_nonpositive_prices_are_rejected():
     with pytest.raises(ValueError, match="positive"):
         simple_returns(np.array([100.0, 0.0]))
 
+
+def test_drawdown_uses_log_wealth_to_avoid_cumulative_overflow():
+    assert max_drawdown(np.array([1e308, 1e308, -0.5])) == pytest.approx(-0.5)
+
+
+def test_simple_return_rejects_unrepresentable_ratio():
+    with pytest.raises(ValueError, match="finite float range"):
+        simple_returns(np.array([1e-300, 1e300]))
+
+
+@pytest.mark.parametrize("periods", [0, -1, 1.5, np.nan, True])
+def test_annualization_requires_a_positive_integer_period_count(periods):
+    with pytest.raises(ValueError, match="positive integer"):
+        risk_summary(np.array([0.01, -0.01]), periods_per_year=periods)
+
+
+def test_scaled_statistics_remain_finite_for_large_equal_returns():
+    stats = risk_summary(np.array([1e308, 1e308]), periods_per_year=1)
+    assert stats["mean_period_return"] == pytest.approx(1e308)
+    assert stats["annualized_volatility"] == 0.0
+

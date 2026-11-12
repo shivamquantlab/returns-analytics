@@ -15,7 +15,11 @@ def _prices(values: np.ndarray) -> np.ndarray:
 def simple_returns(prices: np.ndarray) -> np.ndarray:
     """Close-to-close simple returns; the first price has no prior return."""
     values = _prices(prices)
-    return values[1:] / values[:-1] - 1.0
+    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+        result = values[1:] / values[:-1] - 1.0
+    if not np.isfinite(result).all():
+        raise ValueError("computed simple returns exceed the finite float range")
+    return result
 
 
 def log_returns(prices: np.ndarray) -> np.ndarray:
@@ -31,9 +35,9 @@ def max_drawdown(returns: np.ndarray) -> float:
         raise ValueError("returns must be a non-empty one-dimensional array")
     if not np.isfinite(values).all() or (values <= -1).any():
         raise ValueError("returns must be finite and greater than -100%")
-    wealth = np.concatenate(([1.0], np.cumprod(1.0 + values)))
-    peaks = np.maximum.accumulate(wealth)
-    return float(np.min(wealth / peaks - 1.0))
+    log_wealth = np.concatenate(([0.0], np.cumsum(np.log1p(values))))
+    log_peaks = np.maximum.accumulate(log_wealth)
+    return float(np.min(np.expm1(log_wealth - log_peaks)))
 
 
 def risk_summary(returns: np.ndarray, periods_per_year: int = 252) -> dict[str, float]:
@@ -41,13 +45,31 @@ def risk_summary(returns: np.ndarray, periods_per_year: int = 252) -> dict[str, 
     values = np.asarray(returns, dtype=float)
     if values.ndim != 1 or values.size < 2:
         raise ValueError("returns must contain at least 2 observations")
-    if not np.isfinite(values).all() or periods_per_year <= 0:
-        raise ValueError("returns must be finite and periods_per_year positive")
+    if not np.isfinite(values).all():
+        raise ValueError("returns must be finite")
+    if (
+        isinstance(periods_per_year, (bool, np.bool_))
+        or not isinstance(periods_per_year, (int, np.integer))
+        or periods_per_year <= 0
+    ):
+        raise ValueError("periods_per_year must be a positive integer")
+    scale = float(np.max(np.abs(values)))
+    if scale == 0.0:
+        mean_return = 0.0
+        sample_volatility = 0.0
+    else:
+        scaled = values / scale
+        mean_return = float(scale * scaled.mean())
+        sample_volatility = float(scale * scaled.std(ddof=1))
+    annualized_mean = mean_return * periods_per_year
+    annualized_volatility = sample_volatility * np.sqrt(periods_per_year)
+    if not np.isfinite([mean_return, sample_volatility, annualized_mean, annualized_volatility]).all():
+        raise ValueError("return statistics exceed the finite float range")
     return {
         "observations": float(values.size),
-        "mean_period_return": float(values.mean()),
-        "annualized_mean": float(values.mean() * periods_per_year),
-        "annualized_volatility": float(values.std(ddof=1) * np.sqrt(periods_per_year)),
+        "mean_period_return": mean_return,
+        "annualized_mean": float(annualized_mean),
+        "annualized_volatility": float(annualized_volatility),
         "max_drawdown": max_drawdown(values),
     }
 
